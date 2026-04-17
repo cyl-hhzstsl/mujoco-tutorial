@@ -1,0 +1,21 @@
+<mujoco model="ball_drop">
+  <!--
+  最简单的 MuJoCo 模型：一个球从高处自由落体。
+  用于验证安装和理解基本仿真流程。
+  -->
+  <option timestep="0.002" gravity="0 0 -9.81" />
+
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1" />
+
+    <!-- 地面 -->
+    <geom type="plane" size="5 5 0.1" rgba="0.9 0.9 0.9 1" />
+
+    <!-- 自由落体的球 -->
+    <body name="ball" pos="0 0 2">
+      <joint name="ball_free" type="free" />
+      <geom name="ball_geom" type="sphere" size="0.1" mass="1"
+            rgba="1 0.2 0.2 1" />
+    </body>
+  </worldbody>
+</mujoco>

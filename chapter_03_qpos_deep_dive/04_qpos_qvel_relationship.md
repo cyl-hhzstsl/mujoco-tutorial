@@ -1,0 +1,265 @@
+# 第 3 章 · 04 — qpos 与 qvel 的深层关系
+
+> **目标**: 理解广义位置 (qpos) 和广义速度 (qvel) 之间的数学关系，包括维度不匹配、数值微分、雅可比矩阵、能量计算、相空间。
+
+## 核心知识点
+
+| 主题 | 关键内容 |
+| :--- | :--- |
+| nq ≠ nv | 四元数导致位置维度 > 速度维度 |
+| mj_step 更新流程 | qacc → qvel → qpos 的积分链 |
+| 数值微分 | 从 qpos 轨迹恢复 qvel |
+| 雅可比矩阵 | 关节空间 ↔ 笛卡尔空间的桥梁 |
+| 能量计算 | 动能 + 势能守恒验证 |
+| 相空间 | (qpos, qvel) 轨迹可视化 |
+
+---
+
+## 1. nq ≠ nv — 完整解析
+
+### 每种关节的维度
+
+| 关节类型 | qpos 维度 (nq) | qvel 维度 (nv) | 差值 | 原因 |
+| :------: | :---: | :---: | :---: | :--- |
+| free     | 7 | 6 | +1 | 四元数 4 维表示 3 自由度旋转 |
+| ball     | 4 | 3 | +1 | 同上 |
+| hinge    | 1 | 1 | 0 | 角度直接对应角速度 |
+| slide    | 1 | 1 | 0 | 位移直接对应速度 |
+
+### 公式
+
+```
+nq = Σ nq_i  (所有关节的 qpos 维度之和)
+nv = Σ nv_i  (所有关节的 qvel 维度之和)
+nq - nv = (free 关节数) + (ball 关节数)
+```
+
+### 模型对比
+
+| 模型 | njnt | nq | nv | nq-nv |
+| :--- | :---: | :---: | :---: | :---: |
+| 单摆 (1 hinge) | 1 | 1 | 1 | 0 |
+| 3DOF 机械臂 (3 hinge) | 3 | 3 | 3 | 0 |
+| 自由物体 (1 free) | 1 | 7 | 6 | 1 |
+| 混合模型 (1 free + 2 ball + 1 hinge + 1 slide) | 5 | 17 | 14 | 3 |
+
+> **本质**：qpos 是位置流形上的坐标，qvel 是切空间中的速度。四元数用 4 个数表示 3 个自由度，导致 nq > nv。
+
+---
+
+## 2. mj_step 内部: qvel → qpos 更新过程
+
+`mj_step` 的简化流程：
+
+```
+1. 计算加速度:  qacc = M⁻¹(τ + Jᵀ·F - C - g)
+2. 更新速度:    qvel += qacc × dt
+3. 更新位置:    qpos = integratePos(qpos, qvel, dt)
+                ↑ 不是简单加法！
+```
+
+| 关节类型 | 位置更新方式 |
+| :---: | :--- |
+| hinge/slide | `qpos += qvel × dt`（简单加法） |
+| free/ball | 四元数指数映射积分（`mj_integratePos`） |
+
+### 单摆示例
+
+初始角度 45°，观察前几步：
+
+```
+ 步数   time     qpos(°)    qvel(°/s)     qacc
+    0   0.0000    45.0000       0.0000   -83.1677
+    1   0.0010    44.9999      -0.0832   -83.1672
+    2   0.0020    44.9997      -0.1663   -83.1657
+    ...
+```
+
+- qpos 从 45° 开始减小（重力拉回）
+- qvel 从 0 开始增大（加速下落）
+- qacc 由重力产生（`-g·sin(θ)·L`）
+
+---
+
+## 3. 数值微分: 从 qpos 轨迹推算 qvel
+
+当数据中只存了 qpos 没存 qvel 时，可以通过数值微分近似恢复。
+
+### 三种方法
+
+| 方法 | 公式 | 精度 | 适用范围 |
+| :--- | :--- | :--- | :--- |
+| 前向差分 | `(qpos[t+1] - qpos[t]) / dt` | O(dt) | hinge/slide |
+| 中心差分 | `(qpos[t+1] - qpos[t-1]) / (2·dt)` | O(dt²) | hinge/slide |
+| `mj_differentiatePos` | 内部处理四元数 | O(dt) | **所有关节** |
+
+### 代码
+
+```python
+# 中心差分 (numpy 实现)
+qvel_approx = np.gradient(qpos_history, dt)
+
+# MuJoCo 方式 (支持四元数)
+qvel_mj = np.zeros(model.nv)
+mujoco.mj_differentiatePos(model, qvel_mj, dt, qpos1, qpos2)
+```
+
+### 精度对比
+
+中心差分误差约为前向差分的 1/10 ~ 1/100。但对于含 free/ball 关节的模型，必须用 `mj_differentiatePos`。
+
+---
+
+## 4. 雅可比矩阵 — 关节速度 ↔ 末端速度
+
+雅可比矩阵 J 是关节空间和笛卡尔空间之间的线性映射。
+
+### 定义
+
+```
+v_ee = J · qvel
+
+其中:
+  v_ee — 6 维 (3 线速度 + 3 角速度)
+  J    — 6×nv 矩阵 (分为 Jp 平移 + Jr 旋转)
+  qvel — nv 维
+```
+
+### MuJoCo API
+
+```python
+jacp = np.zeros((3, model.nv))  # 平移雅可比 3×nv
+jacr = np.zeros((3, model.nv))  # 旋转雅可比 3×nv
+mujoco.mj_jac(model, data, jacp, jacr, point, body_id)
+```
+
+### 雅可比矩阵的四大用途
+
+**1. 正向映射：关节速度 → 末端速度**
+
+```python
+v_ee = jacp @ qvel
+```
+
+**2. 逆向映射：末端速度 → 关节速度（逆运动学速度级）**
+
+```python
+qvel = np.linalg.pinv(jacp) @ desired_ee_vel
+```
+
+**3. 力映射：末端力 → 关节力矩**
+
+```python
+tau = jacp.T @ F_ee
+```
+
+**4. 奇异性检测**
+
+```python
+manipulability = np.sqrt(np.linalg.det(jacp @ jacp.T))
+# ≈ 0 时接近奇异构型，末端运动能力受限
+```
+
+---
+
+## 5. 从 qpos/qvel 计算能量
+
+MuJoCo 通过 `data.energy` 直接提供能量值：
+
+```python
+mujoco.mj_forward(model, data)
+
+kinetic_energy  = data.energy[0]   # 动能 T = ½ qvelᵀ M qvel
+potential_energy = data.energy[1]   # 势能 V = -Σ mᵢ g · xᵢ
+total_energy = kinetic_energy + potential_energy
+```
+
+> 注意：需要先调用 `mj_forward` 更新 `data.energy`。
+
+### 能量守恒验证（无阻尼单摆）
+
+| 时间(s) | 动能 | 势能 | 总能量 |
+| ---: | ---: | ---: | ---: |
+| 0.000 | 0.0000 | -4.4643 | -4.4643 |
+| 0.500 | 0.1568 | -4.6211 | -4.4643 |
+| 1.000 | 0.0060 | -4.4703 | -4.4643 |
+
+- 动能和势能互换，但总能量恒定
+- 数值积分会引入微小误差（相对波动 < 0.01%）
+
+### 物理含义
+
+- **最低点**：势能最小，动能最大（速度最快）
+- **最高点**：势能最大，动能为零（速度为零，瞬间静止）
+- **总能量守恒**：保守系统的标志
+
+---
+
+## 6. 相空间可视化 (qpos vs qvel)
+
+相空间图以 qpos 为横轴、qvel 为纵轴，绘制系统状态的轨迹。
+
+### 单摆相空间特征
+
+```
+             qvel (角速度)
+              ↑
+              |    ╭───╮
+              |  ╱       ╲
+              |╱           ╲    ← 相轨迹: 闭合椭圆
+         ─────┼─────────────╲───→ qpos (角度)
+              |╲           ╱
+              |  ╲       ╱
+              |    ╰───╯
+              |
+```
+
+- **闭合轨迹** → 能量守恒（保守系统）
+- **小角度** (10°-30°)：接近圆形 → 线性简谐运动近似
+- **大角度** (90°-150°)：椭圆变形 → 非线性效应明显
+- **颜色映射时间** → 沿轨迹循环 → 周期运动
+
+### 四张子图
+
+| 子图 | 内容 | 物理含义 |
+| :--- | :--- | :--- |
+| 左上 | 角度 vs 时间 | 周期性振荡 |
+| 右上 | 角速度 vs 时间 | 与角度相位差 90° |
+| 左下 | 相空间轨迹 | 闭合椭圆 = 能量守恒 |
+| 右下 | 能量 vs 时间 | 动能势能互换，总能量恒定 |
+
+生成的图片保存为 `phase_space.png` 和 `phase_portrait.png`。
+
+---
+
+## 总结
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                qpos 与 qvel 的关系                              │
+│                                                               │
+│  维度关系:                                                     │
+│    nq = nv + (free关节数) + (ball关节数)                       │
+│    qpos ∈ ℝ^nq  (位置流形上的坐标)                            │
+│    qvel ∈ ℝ^nv  (切空间中的速度)                               │
+│                                                               │
+│  更新关系 (mj_step):                                           │
+│    qacc = M⁻¹(τ + J^T·F - C - g)                             │
+│    qvel += qacc × dt                                          │
+│    qpos = integratePos(qpos, qvel, dt)                        │
+│                                                               │
+│  数值微分 (只有 qpos 时):                                      │
+│    qvel ≈ differentiatePos(qpos[t], qpos[t+1], dt)           │
+│    或: qvel ≈ np.gradient(qpos, dt)  (仅限 hinge/slide)      │
+│                                                               │
+│  雅可比矩阵:                                                   │
+│    v_ee = J · qvel        (关节速度 → 末端速度)               │
+│    qvel = J⁺ · v_ee       (末端速度 → 关节速度)               │
+│    τ = J^T · F_ee          (末端力 → 关节力矩)               │
+│                                                               │
+│  能量:                                                         │
+│    T = ½ qvelᵀ M qvel     (动能)                              │
+│    V = -Σ mᵢ g · xᵢ       (重力势能)                         │
+│    E = T + V               (守恒量)                           │
+└───────────────────────────────────────────────────────────────┘
+```

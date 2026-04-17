@@ -1,0 +1,181 @@
+<!-- ============================================================
+     3-DOF 机械臂模型 (Robot Arm)
+     
+     结构: 固定底座 → 肩关节 → 肘关节 → 腕关节 → 末端执行器
+     三个铰链关节，位置伺服执行器，全面的传感器配置
+     ============================================================ -->
+<mujoco model="robot_arm_3dof">
+
+  <!-- 编译器设置：角度单位为度，自动推断关节限位 -->
+  <compiler angle="degree" autolimits="true"/>
+
+  <!-- 仿真选项 -->
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="RK4"/>
+
+  <!-- ============================================================
+       默认参数：减少 XML 中的重复定义
+       ============================================================ -->
+  <default>
+    <!-- 关节默认值 -->
+    <joint type="hinge" damping="1.0" armature="0.05" limited="true"/>
+
+    <!-- 几何体默认值 -->
+    <geom contype="1" conaffinity="1" friction="1 0.005 0.0001"/>
+
+    <!-- 位置执行器默认值 -->
+    <position kp="50" ctrlrange="-180 180"/>
+
+    <!-- 不同类别的默认值 -->
+    <default class="link">
+      <geom type="capsule" rgba="0.2 0.5 0.8 1" density="2000"/>
+    </default>
+    <default class="visual">
+      <geom contype="0" conaffinity="0" group="1" rgba="0.6 0.6 0.6 0.5"/>
+    </default>
+  </default>
+
+  <!-- 视觉资源 -->
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.4 0.6" rgb2="0 0 0"
+             width="512" height="3072"/>
+    <texture type="2d" name="grid" builtin="checker"
+             rgb1="0.2 0.2 0.2" rgb2="0.3 0.3 0.3"
+             width="512" height="512"/>
+    <material name="grid" texture="grid" texrepeat="8 8" reflectance="0.1"/>
+    <material name="base_mat" rgba="0.4 0.4 0.4 1" specular="0.5"/>
+    <material name="joint_mat" rgba="0.8 0.2 0.2 1" specular="0.8"/>
+  </asset>
+
+  <!-- ============================================================
+       世界体：场景根节点
+       ============================================================ -->
+  <worldbody>
+    <!-- 光源配置 -->
+    <light name="spotlight" pos="0 -2 3" dir="0 1 -1" diffuse="0.8 0.8 0.8"
+           specular="0.3 0.3 0.3" cutoff="30"/>
+    <light name="ambient" pos="0 0 4" dir="0 0 -1" diffuse="0.4 0.4 0.4"
+           directional="true"/>
+
+    <!-- 地面 -->
+    <geom name="floor" type="plane" size="5 5 0.1" material="grid"/>
+
+    <!-- ============================================================
+         固定底座：不可移动，作为机械臂的安装基础
+         ============================================================ -->
+    <body name="base" pos="0 0 0.1">
+      <!-- 底座几何体：矮圆柱 -->
+      <geom name="base_geom" type="cylinder" size="0.12 0.05"
+            material="base_mat" mass="10"/>
+
+      <!-- 底座装饰环 -->
+      <geom name="base_ring" class="visual" type="cylinder"
+            size="0.13 0.005" pos="0 0 0.05"/>
+
+      <!-- ============================================================
+           肩关节段：绕 Y 轴旋转（前后摆动）
+           ============================================================ -->
+      <body name="upper_arm" pos="0 0 0.1">
+        <!-- 关节装饰球 -->
+        <geom name="shoulder_ball" type="sphere" size="0.05"
+              material="joint_mat" mass="0.1"/>
+
+        <!-- 肩关节 -->
+        <joint name="shoulder" axis="0 1 0" range="-90 160"/>
+
+        <!-- 上臂连杆 -->
+        <geom name="upper_arm_geom" class="link" size="0.035"
+              fromto="0 0 0 0 0 0.4" mass="2"/>
+
+        <!-- ============================================================
+             肘关节段：绕 Y 轴旋转
+             ============================================================ -->
+        <body name="forearm" pos="0 0 0.4">
+          <geom name="elbow_ball" type="sphere" size="0.04"
+                material="joint_mat" mass="0.1"/>
+
+          <!-- 肘关节 -->
+          <joint name="elbow" axis="0 1 0" range="-120 120"/>
+
+          <!-- 前臂连杆：比上臂细一些 -->
+          <geom name="forearm_geom" class="link" size="0.028"
+                fromto="0 0 0 0 0 0.3" mass="1"/>
+
+          <!-- ============================================================
+               腕关节段：绕 Y 轴旋转
+               ============================================================ -->
+          <body name="hand" pos="0 0 0.3">
+            <geom name="wrist_ball" type="sphere" size="0.03"
+                  material="joint_mat" mass="0.05"/>
+
+            <!-- 腕关节 -->
+            <joint name="wrist" axis="0 1 0" range="-90 90"/>
+
+            <!-- 手掌 -->
+            <geom name="hand_geom" class="link" size="0.022"
+                  fromto="0 0 0 0 0 0.15" mass="0.3"/>
+
+            <!-- ============================================================
+                 末端执行器标记点（site）
+                 用于传感器挂载和任务空间控制
+                 ============================================================ -->
+            <site name="end_effector" pos="0 0 0.15" size="0.015"
+                  rgba="1 0.2 0.2 1"/>
+
+            <!-- 手指装饰 -->
+            <geom name="finger_left" class="visual" type="capsule"
+                  size="0.008" fromto="-0.02 0 0.15 -0.02 0 0.18"/>
+            <geom name="finger_right" class="visual" type="capsule"
+                  size="0.008" fromto="0.02 0 0.15 0.02 0 0.18"/>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- 目标物体（供抓取测试用） -->
+    <body name="target" pos="0.3 0 0.3">
+      <geom name="target_geom" type="sphere" size="0.03"
+            rgba="0 1 0 0.6" contype="0" conaffinity="0"/>
+      <site name="target_site" size="0.01" rgba="0 1 0 1"/>
+    </body>
+  </worldbody>
+
+  <!-- ============================================================
+       执行器：位置伺服控制
+       输入目标角度 (度)，内部 PD 控制器驱动关节
+       ============================================================ -->
+  <actuator>
+    <position name="shoulder_act" joint="shoulder" kp="100"
+              ctrlrange="-90 160"/>
+    <position name="elbow_act" joint="elbow" kp="80"
+              ctrlrange="-120 120"/>
+    <position name="wrist_act" joint="wrist" kp="40"
+              ctrlrange="-90 90"/>
+  </actuator>
+
+  <!-- ============================================================
+       传感器：全面的状态反馈
+       ============================================================ -->
+  <sensor>
+    <!-- 关节角度 (弧度) -->
+    <jointpos name="shoulder_pos" joint="shoulder"/>
+    <jointpos name="elbow_pos" joint="elbow"/>
+    <jointpos name="wrist_pos" joint="wrist"/>
+
+    <!-- 关节速度 (弧度/秒) -->
+    <jointvel name="shoulder_vel" joint="shoulder"/>
+    <jointvel name="elbow_vel" joint="elbow"/>
+    <jointvel name="wrist_vel" joint="wrist"/>
+
+    <!-- 执行器力矩 -->
+    <actuatorfrc name="shoulder_torque" actuator="shoulder_act"/>
+    <actuatorfrc name="elbow_torque" actuator="elbow_act"/>
+    <actuatorfrc name="wrist_torque" actuator="wrist_act"/>
+
+    <!-- 末端执行器位置 (世界坐标) -->
+    <framepos name="end_effector_pos" objtype="site" objname="end_effector"/>
+
+    <!-- 末端执行器速度 -->
+    <framevelocity name="end_effector_vel" objtype="site" objname="end_effector"/>
+  </sensor>
+
+</mujoco>

@@ -1,0 +1,44 @@
+<mujoco model="pendulum">
+  <!--
+  单摆模型：一个 hinge 关节连接的摆杆。
+  用于理解 hinge 关节和 qpos 的关系。
+  -->
+  <compiler angle="radian" />
+  <option timestep="0.002" gravity="0 0 -9.81" />
+
+  <default>
+    <joint damping="0.05" />
+  </default>
+
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1" />
+    <geom type="plane" size="5 5 0.1" rgba="0.9 0.9 0.9 1" />
+
+    <!-- 固定支点 -->
+    <body name="pivot" pos="0 0 1.5">
+      <geom type="sphere" size="0.03" rgba="0.3 0.3 0.3 1" />
+
+      <!-- 摆杆 -->
+      <body name="pendulum_arm" pos="0 0 0">
+        <joint name="hinge" type="hinge" axis="0 1 0" />
+        <geom type="capsule" fromto="0 0 0  0 0 -0.5" size="0.02"
+              rgba="0.2 0.5 0.8 1" mass="0.5" />
+
+        <!-- 摆锤 -->
+        <body name="bob" pos="0 0 -0.5">
+          <geom type="sphere" size="0.05" rgba="1 0.5 0 1" mass="1" />
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="hinge_motor" joint="hinge" gear="1"
+           ctrllimited="true" ctrlrange="-5 5" />
+  </actuator>
+
+  <sensor>
+    <jointpos name="hinge_pos" joint="hinge" />
+    <jointvel name="hinge_vel" joint="hinge" />
+  </sensor>
+</mujoco>

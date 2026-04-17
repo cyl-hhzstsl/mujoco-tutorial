@@ -1,0 +1,103 @@
+<!-- ============================================================
+     双摆模型 (Double Pendulum)
+     
+     结构: 世界 → 连杆1 (肩关节) → 连杆2 (肘关节)
+     两个铰链关节，两个力矩执行器，多种传感器
+     ============================================================ -->
+<mujoco model="double_pendulum">
+
+  <!-- 编译器设置：角度用度数，自动计算惯量 -->
+  <compiler angle="degree" autolimits="true"/>
+
+  <!-- 仿真选项：时间步 0.002s，默认重力 -->
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+
+  <!-- 默认参数：统一设置关节阻尼和几何体外观 -->
+  <default>
+    <joint damping="0.5" armature="0.01"/>
+    <geom rgba="0.3 0.6 0.9 1" contype="1" conaffinity="1"/>
+    <position kp="10" ctrlrange="-180 180"/>
+  </default>
+
+  <!-- 视觉资源 -->
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.4 0.5 0.6" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge"
+             rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8"
+             width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texrepeat="5 5" texuniform="true" reflectance="0.2"/>
+  </asset>
+
+  <!-- ============================================================
+       世界体：所有刚体的根节点
+       ============================================================ -->
+  <worldbody>
+    <!-- 光源 -->
+    <light pos="0 0 3" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
+
+    <!-- 地面 -->
+    <geom name="floor" type="plane" size="3 3 0.1" material="groundplane"/>
+
+    <!-- 支撑架：固定在世界坐标系 -->
+    <body name="mount" pos="0 0 1.5">
+      <geom name="mount_geom" type="cylinder" size="0.05 0.05"
+            rgba="0.5 0.5 0.5 1" mass="0"/>
+
+      <!-- 连杆1：通过肩关节连接到支撑架 -->
+      <body name="link1" pos="0 0 0">
+        <!-- 肩关节：绕 Y 轴旋转 -->
+        <joint name="shoulder" type="hinge" axis="0 1 0"
+               range="-180 180"/>
+        <!-- 连杆1 几何体：胶囊体 -->
+        <geom name="link1_geom" type="capsule" size="0.03"
+              fromto="0 0 0 0 0 -0.5" mass="1"
+              rgba="0.3 0.6 0.9 1"/>
+
+        <!-- 连杆2：通过肘关节连接到连杆1末端 -->
+        <body name="link2" pos="0 0 -0.5">
+          <!-- 肘关节：绕 Y 轴旋转 -->
+          <joint name="elbow" type="hinge" axis="0 1 0"
+                 range="-180 180"/>
+          <!-- 连杆2 几何体 -->
+          <geom name="link2_geom" type="capsule" size="0.025"
+                fromto="0 0 0 0 0 -0.4" mass="0.5"
+                rgba="0.9 0.4 0.2 1"/>
+
+          <!-- 末端标记点 -->
+          <site name="end_effector" pos="0 0 -0.4" size="0.02"
+                rgba="1 0 0 1"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- ============================================================
+       执行器：为每个关节配置力矩电机
+       ============================================================ -->
+  <actuator>
+    <!-- 位置伺服执行器：输入目标角度，内部 PD 控制 -->
+    <position name="shoulder_pos" joint="shoulder" kp="20"/>
+    <position name="elbow_pos" joint="elbow" kp="15"/>
+  </actuator>
+
+  <!-- ============================================================
+       传感器：获取关节和末端状态
+       ============================================================ -->
+  <sensor>
+    <!-- 关节角度传感器 -->
+    <jointpos name="shoulder_angle" joint="shoulder"/>
+    <jointpos name="elbow_angle" joint="elbow"/>
+
+    <!-- 关节速度传感器 -->
+    <jointvel name="shoulder_vel" joint="shoulder"/>
+    <jointvel name="elbow_vel" joint="elbow"/>
+
+    <!-- 执行器力传感器 -->
+    <actuatorfrc name="shoulder_force" actuator="shoulder_pos"/>
+    <actuatorfrc name="elbow_force" actuator="elbow_pos"/>
+
+    <!-- 末端位置传感器 -->
+    <framepos name="end_pos" objtype="site" objname="end_effector"/>
+  </sensor>
+
+</mujoco>

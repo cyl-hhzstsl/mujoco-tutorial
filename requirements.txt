@@ -1,0 +1,11 @@
+mujoco
+numpy
+matplotlib
+scipy
+h5py
+robot_descriptions
+dm_control
+gymnasium[mujoco]
+pandas
+pyarrow
+tqdm
