@@ -8,6 +8,7 @@
 2. 实现**基础控制器**（PD / PID），理解控制信号如何变成机器人数据
 3. 理解**Sim-to-Real 差距**对数据分布的影响，掌握域随机化技术
 4. 实现**多模态数据采集**，同步记录关节状态、图像、力传感器数据
+5. 使用**mink 库**实现专业级 IK，掌握约束优化在机器人控制中的应用
 
 ## 为什么后端工程师需要了解这些
 
@@ -26,6 +27,7 @@
 | `02_control_basics.py` | 控制基础：PD/PID 控制器实现、重力补偿、轨迹跟踪、控制器性能对比 |
 | `03_sim_to_real.py` | Sim-to-Real：域随机化、参数扰动、数据分布对比、数据增强技术 |
 | `04_multimodal_data.py` | 多模态数据：图像渲染、HDF5 存储、数据流对齐、MultiModalRecorder |
+| `05_mink_ik.py` | mink 逆运动学：Configuration/FrameTask/solve_ik、约束 IK、与手写 IK 对比、轨迹生成 |
 
 ## 核心概念
 
@@ -59,6 +61,7 @@ python 01_kinematics.py          # 生成 workspace.png
 python 02_control_basics.py      # 生成 control_comparison.png
 python 03_sim_to_real.py         # 生成 sim2real_distributions.png
 python 04_multimodal_data.py     # 生成 multimodal_episode.h5
+python 05_mink_ik.py             # 生成 mink_vs_manual_ik.png, mink_trajectory.png
 ```
 
 ## 依赖
@@ -67,6 +70,7 @@ python 04_multimodal_data.py     # 生成 multimodal_episode.h5
 pip install numpy matplotlib mujoco
 # 可选
 pip install h5py    # 04 多模态数据存储
+pip install mink    # 05 专业级 IK 库
 ```
 
 ## 本章与前几章的关系
@@ -85,3 +89,4 @@ pip install h5py    # 04 多模态数据存储
 - **02 控制**：重点看 PD 控制的参数如何影响数据特征（振荡、超调、稳态误差）
 - **03 Sim-to-Real**：关注数据分布的变化，这是数据工程师最需要理解的
 - **04 多模态**：动手修改采样频率和数据对齐方式，体会存储设计的复杂性
+- **05 mink**：先理解 01 的手写 IK 原理，再用 mink 体会专业库的抽象和约束能力

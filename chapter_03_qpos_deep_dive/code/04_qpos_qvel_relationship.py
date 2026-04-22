@@ -212,7 +212,7 @@ for step in range(11):
 
 print(f"""
   观察:
-    - qpos 从 45° 开始减小 (重力拉回)
+    - qpos 从 45° 开始增大 (摆杆初始向上翘 45°，重力使其向下摆，角度增大)
     - qvel 从 0 开始增大 (加速)
     - qacc 是角加速度 (由重力产生)
     - 每步: qvel += qacc × dt, qpos += qvel × dt (hinge 情况)
